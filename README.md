@@ -4,7 +4,7 @@
 
 This repository contains the Bitails ElectrumX Adapter, a Node.js/NestJS application designed to bridge ElectrumSV clients with the Bitails backend API, emulating ElectrumX server functionality. While commonly used for ElectrumSV, this adapter facilitates interactions between various ElectrumSV clients and Bitails, leveraging the full range of ElectrumX capabilities, including transaction history, balance inquiries, and more.
 
-Implementing the API is straightforward for individual use or development with a single wallet. However, to serve multiple wallets concurrently and ensure optimal performance, it's advisable to use a unique Bitails API key for each user to prevent hitting rate limits on the Bitails backend.
+Implementing the API is straightforward for individual use or development with a single wallet. However, to serve this adapter as a public service for multiple users, it's advisable to use a unique Bitails API key to prevent hitting rate limits on the Bitails backend.
 
 ## Features
 
