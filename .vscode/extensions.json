@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "kuscamara.remove-unused-imports",
+    "amatiasq.sort-imports",
+    "esbenp.prettier-vscode",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}
