@@ -24,7 +24,7 @@ Implementing the API is straightforward for individual use or development with a
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/Omegachains/bitails-electrumx-adaptor.git
+   git clone https://github.com/bitails/electrumx-adaptor.git
    cd bitails-electrumx-adaptor
    ```
 
@@ -112,7 +112,7 @@ These endpoints serve both as a demonstration of the Bitails ElectrumX Adapter's
 
 ## Support and Feedback
 
-For support requests and feedback on the Bitails ElectrumX Adapter, please [open an issue](https://github.com/Omegachains/bitails-electrumx-adaptor/issues) in this repository.
+For support requests and feedback on the Bitails ElectrumX Adapter, please [open an issue](https://github.com/bitails/electrumx-adaptor/issues) in this repository.
 
 ## License
 
