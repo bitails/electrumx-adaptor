@@ -1,5 +1,3 @@
-import { HttpException, Injectable } from '@nestjs/common';
-import axios, { AxiosResponse } from 'axios';
 import {
   BitailsBroadcastTransaction,
   BitailsNetworkInfo,
@@ -11,12 +9,31 @@ import {
   BitailsTransaction,
   BitailsTransactionMerkleTSC,
 } from 'types/bitails';
+import { HttpException, Injectable } from '@nestjs/common';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
 import { BitailsApiConfigService } from './bitails.api.config.service';
+import axiosRetry from 'axios-retry';
 
 @Injectable()
 export class BitailsApiService {
-  constructor(private readonly configService: BitailsApiConfigService) {}
+  private readonly axiosInstance: AxiosInstance;
+  constructor(private readonly configService: BitailsApiConfigService) {
+    this.axiosInstance = axios.create();
+
+    axiosRetry(this.axiosInstance, {
+      retries: 20,
+      retryDelay: (retryCount) => retryCount * 500,
+      retryCondition: (error) => {
+        return (
+          axiosRetry.isNetworkError(error) ||
+          axiosRetry.isRetryableError(error) ||
+          error.code === 'ECONNABORTED' ||
+          error.message.includes('socket hang up')
+        );
+      },
+    });
+  }
 
   async scripthashGetHistory(
     scripthash: string,
@@ -24,7 +41,7 @@ export class BitailsApiService {
     pgkey?: string,
   ) {
     try {
-      const result = await axios.get<
+      const result = await this.axiosInstance.get<
         any,
         AxiosResponse<BitailsScripthashHistory>
       >(
@@ -48,7 +65,7 @@ export class BitailsApiService {
 
   async getTransactionsMulti(txsIds: string[]): Promise<BitailsTransaction[]> {
     try {
-      const txsResult = await axios.post<
+      const txsResult = await this.axiosInstance.post<
         any,
         AxiosResponse<BitailsTransaction[]>
       >(
@@ -75,7 +92,7 @@ export class BitailsApiService {
     outputs: { txid: string; index: number }[],
   ) {
     try {
-      const outputsStatusResults = await axios.post<
+      const outputsStatusResults = await this.axiosInstance.post<
         any,
         AxiosResponse<BitailsOutputStatus[]>
       >(
@@ -105,7 +122,7 @@ export class BitailsApiService {
 
   async scripthashBalance(scripthash: string) {
     try {
-      const result = await axios.get<
+      const result = await this.axiosInstance.get<
         any,
         AxiosResponse<BitailsScripthashBalance>
       >(`${this.configService.API_ENDPOINT}/scripthash/${scripthash}/balance`, {
@@ -126,7 +143,7 @@ export class BitailsApiService {
 
   async scripthashListUnspent(scripthash: string) {
     try {
-      const result = await axios.get<
+      const result = await this.axiosInstance.get<
         any,
         AxiosResponse<BitailsScripthashUnspent>
       >(
@@ -150,7 +167,7 @@ export class BitailsApiService {
 
   async transactionMerkle(txid: string) {
     try {
-      const result = await axios.get<
+      const result = await this.axiosInstance.get<
         any,
         AxiosResponse<BitailsTransactionMerkleTSC>
       >(`${this.configService.API_ENDPOINT}/tx/${txid}/proof/tsc`, {
@@ -171,12 +188,12 @@ export class BitailsApiService {
 
   async getTransaction(txid: string) {
     try {
-      const result = await axios.get<any, AxiosResponse<BitailsTransaction>>(
-        `${this.configService.API_ENDPOINT}/tx/${txid}`,
-        {
-          headers: { apiKey: this.configService.API_KEY },
-        },
-      );
+      const result = await this.axiosInstance.get<
+        any,
+        AxiosResponse<BitailsTransaction>
+      >(`${this.configService.API_ENDPOINT}/tx/${txid}`, {
+        headers: { apiKey: this.configService.API_KEY },
+      });
       if (result.status !== 200) {
         throw new HttpException(result.statusText, result.status);
       }
@@ -192,7 +209,7 @@ export class BitailsApiService {
 
   async getTransactionRaw(txid: string): Promise<Buffer> {
     try {
-      const result = await axios.get<any, AxiosResponse<Buffer>>(
+      const result = await this.axiosInstance.get<any, AxiosResponse<Buffer>>(
         `${this.configService.API_ENDPOINT}/download/tx/${txid}`,
         {
           responseType: 'arraybuffer',
@@ -215,12 +232,12 @@ export class BitailsApiService {
 
   async getNetworkInfo() {
     try {
-      const result = await axios.get<any, AxiosResponse<BitailsNetworkInfo>>(
-        `${this.configService.API_ENDPOINT}/network/info`,
-        {
-          headers: { apiKey: this.configService.API_KEY },
-        },
-      );
+      const result = await this.axiosInstance.get<
+        any,
+        AxiosResponse<BitailsNetworkInfo>
+      >(`${this.configService.API_ENDPOINT}/network/info`, {
+        headers: { apiKey: this.configService.API_KEY },
+      });
       if (result.status !== 200) {
         throw new HttpException(result.statusText, result.status);
       }
@@ -236,7 +253,10 @@ export class BitailsApiService {
 
   async getBlockHeader(height: number) {
     try {
-      const result = await axios.get<any, AxiosResponse<BitailsRawBlockHeader>>(
+      const result = await this.axiosInstance.get<
+        any,
+        AxiosResponse<BitailsRawBlockHeader>
+      >(
         `${this.configService.API_ENDPOINT}/block/header/height/${height}/raw`,
         {
           headers: { apiKey: this.configService.API_KEY },
@@ -257,7 +277,7 @@ export class BitailsApiService {
 
   async broadcastTransaction(raw: string) {
     try {
-      const result = await axios.post<
+      const result = await this.axiosInstance.post<
         any,
         AxiosResponse<BitailsBroadcastTransaction>
       >(

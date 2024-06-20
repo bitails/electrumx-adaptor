@@ -1,18 +1,36 @@
 import { HttpException, Injectable } from '@nestjs/common';
-import axios, { AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
-import { BitailsMapiFeeQuote } from 'types/bitails.mapi';
 import { BitailsMapiConfigService } from './bitails.mapi.config.service';
+import { BitailsMapiFeeQuote } from 'types/bitails.mapi';
+import axiosRetry from 'axios-retry';
 
 @Injectable()
 export class BitailsMapiService {
-  constructor(private readonly configService: BitailsMapiConfigService) {}
+  private readonly axiosInstance: AxiosInstance;
+  constructor(private readonly configService: BitailsMapiConfigService) {
+    this.axiosInstance = axios.create();
+
+    axiosRetry(this.axiosInstance, {
+      retries: 20,
+      retryDelay: (retryCount) => retryCount * 500,
+      retryCondition: (error) => {
+        return (
+          axiosRetry.isNetworkError(error) ||
+          axiosRetry.isRetryableError(error) ||
+          error.code === 'ECONNABORTED' ||
+          error.message.includes('socket hang up')
+        );
+      },
+    });
+  }
 
   async feeQuote(): Promise<BitailsMapiFeeQuote> {
     try {
-      const result = await axios.get<any, AxiosResponse<{ payload: string }>>(
-        `${this.configService.ENDPOINT}/mapi/feeQuote`,
-      );
+      const result = await this.axiosInstance.get<
+        any,
+        AxiosResponse<{ payload: string }>
+      >(`${this.configService.ENDPOINT}/mapi/feeQuote`);
       if (result.status !== 200) {
         throw new HttpException(result.statusText, result.status);
       }
