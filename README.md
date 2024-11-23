@@ -123,3 +123,19 @@ This project is licensed under the [MIT License](LICENSE.md) - see the LICENSE f
 - The [ElectrumX community](https://electrumx.readthedocs.io) for the protocol specification.
 - The NestJS team for the excellent framework.
 - All contributors and users of the Bitails ElectrumX Adapter.
+
+## Donation
+ESV Adaptor is a side project of the Bitails team, so if you find it useful, a donation(size des not matter here!) encourages us to do more.
+
+BSV: 1Gj7Bi8H1qK4jWrHYDBirr2McyDkxG9wwx
+
+BTC: bc1qcd84l66g5jllj8u476f6w95uk7wf2ynj6xz6a5
+
+
+
+## Contact Info
+If you have any questions or want to talk to the team, send us an [email](info@bitails.io) or contact us through our [telegram group](https://t.me/bitails).
+
+
+
+
