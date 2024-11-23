@@ -134,7 +134,7 @@ BTC: bc1qcd84l66g5jllj8u476f6w95uk7wf2ynj6xz6a5
 
 
 ## Contact Info
-If you have any questions or want to talk to the team, send us an [email](info@bitails.io) or contact us through our [telegram group](https://t.me/bitails).
+If you have any questions or want to talk to the team, send us an [email](mailto:info@bitails.io) or contact us through our [telegram group](https://t.me/bitails).
 
 
 
