@@ -6,6 +6,7 @@ import {
   BitailsSocketLockSpentScripthash,
 } from 'types/bitails';
 import {
+  ElectrumXHistory,
   ElectrumXTransaction,
   ElectrumXTransactionMerkle,
 } from 'types/electrumx';
@@ -15,9 +16,16 @@ import { BitailsApiService } from 'src/bitails/api/bitails.api.service';
 import { BitailsMapiService } from 'src/bitails/mapi/bitails.mapi.service';
 import { BitailsSocket } from 'src/bitails/socket/bitails.socket';
 import { Convertor } from 'src/libs/convertor';
+import {
+  ScripthashStatusItem,
+  computeScripthashStatus,
+} from 'src/libs/scripthash-status';
 import { ELECTRUMX_METHODS } from './tcp.method.const';
 import { Socket } from 'socket.io-client';
 import { TcpConfigService } from './tcp.config.service';
+
+/** Page size for Bitails scripthash history fetches (subscribe + get_history). */
+const SCRIPTHASH_HISTORY_PAGE_SIZE = 500;
 
 @Injectable()
 export class TcpService implements OnModuleInit {
@@ -66,42 +74,30 @@ export class TcpService implements OnModuleInit {
           height: networkInfo.blocks,
         };
         break;
-      case ELECTRUMX_METHODS.BLOCKCHAIN_SCRIPTHASH_SUBSCRIBE:
-        bSocket.on(
-          `lock-scripthash-${request.params[0]}`,
-          (data: BitailsSocketLockSpentScripthash) => {
+      case ELECTRUMX_METHODS.BLOCKCHAIN_SCRIPTHASH_SUBSCRIBE: {
+        const scripthash = request.params[0] as string;
+        const notifyStatus = async (data: BitailsSocketLockSpentScripthash) => {
+          try {
+            const status = await this.scriptHashGetStatus(data.scripthash);
             tcpSocket.write(
               JSON.stringify({
                 jsonrpc: '2.0',
                 method: ELECTRUMX_METHODS.BLOCKCHAIN_SCRIPTHASH_SUBSCRIBE,
-                params: [data.scripthash, data.txid],
+                params: [data.scripthash, status],
               }) + '\n',
             );
-          },
-        );
-        bSocket.on(
-          `spent-scripthash-${request.params[0]}`,
-          (data: BitailsSocketLockSpentScripthash) => {
-            tcpSocket.write(
-              JSON.stringify({
-                jsonrpc: '2.0',
-                method: ELECTRUMX_METHODS.BLOCKCHAIN_SCRIPTHASH_SUBSCRIBE,
-                params: [data.scripthash, data.txid],
-              }) + '\n',
+          } catch (error) {
+            Logger.error(
+              `Failed to push scripthash status for ${data.scripthash}`,
+              error,
             );
-          },
-        );
-        const history = await this.bitailsApiService.scripthashGetHistory(
-          request.params[0],
-          1,
-        );
-        if (history.history.length > 0) {
-          const transaction = await this.bitailsApiService.getTransaction(
-            history.history[0].txid,
-          );
-          result = `${history.history[0]?.txid}:${transaction.blockheight}`;
-        }
+          }
+        };
+        bSocket.on(`lock-scripthash-${scripthash}`, notifyStatus);
+        bSocket.on(`spent-scripthash-${scripthash}`, notifyStatus);
+        result = await this.scriptHashGetStatus(scripthash);
         break;
+      }
       case ELECTRUMX_METHODS.SERVER_PING:
         result = null;
         break;
@@ -218,35 +214,53 @@ export class TcpService implements OnModuleInit {
     });
   }
 
-  private async scriptHashGetHistory(params: any[]) {
-    const result = await this.bitailsApiService.scripthashGetHistory(
-      params[0],
-      5000,
-    );
-    return result.history.map((history) => ({
-      tx_hash: history.txid,
-      height: history.blockheight,
-    }));
-  }
+  /**
+   * Electrum 1.4 history for a scripthash: confirmed (blockchain order) then
+   * mempool (height 0 / -1). Uses whatever history Bitails still has (pruned).
+   */
+  private async scriptHashGetHistoryItems(
+    scripthash: string,
+  ): Promise<ScripthashStatusItem[]> {
+    const raw: { txid: string; blockheight: number }[] = [];
+    let pgkey: string | undefined;
 
-  private async scriptHashGetMempool(params: any[]) {
-    const txsIds: string[] = [];
-    let pgkey: string = undefined;
     while (true) {
-      const result = await this.bitailsApiService.scripthashGetHistory(
-        params[0],
-        200,
+      const page = await this.bitailsApiService.scripthashGetHistory(
+        scripthash,
+        SCRIPTHASH_HISTORY_PAGE_SIZE,
         pgkey,
       );
-
-      const unconfirmedTxsIds = result.history
-        .filter((history) => history.blockheight <= 0)
-        .map((history) => history.txid);
-      txsIds.push(...unconfirmedTxsIds);
-      if (result.history.length > unconfirmedTxsIds.length || !result.pgKey) {
+      raw.push(...page.history);
+      if (!page.pgKey || page.history.length === 0) {
         break;
       }
-      pgkey = result.pgKey;
+      pgkey = page.pgKey;
+    }
+
+    // Bitails returns newest-first; reverse so same-height ties stay chronological.
+    raw.reverse();
+
+    const confirmed = raw
+      .filter((item) => item.blockheight > 0)
+      .map((item) => ({
+        tx_hash: item.txid,
+        height: item.blockheight,
+      }))
+      .sort((a, b) => a.height - b.height);
+
+    const mempoolTxIds = raw
+      .filter((item) => item.blockheight <= 0)
+      .map((item) => item.txid);
+    const mempool = await this.resolveMempoolHeights(mempoolTxIds);
+
+    return [...confirmed, ...mempool];
+  }
+
+  private async resolveMempoolHeights(
+    txsIds: string[],
+  ): Promise<(ScripthashStatusItem & { fee?: number })[]> {
+    if (txsIds.length === 0) {
+      return [];
     }
 
     const txsResult = await this.bitailsApiService.getTransactionsMulti(txsIds);
@@ -264,7 +278,8 @@ export class TcpService implements OnModuleInit {
     outputsStatusResults.forEach((osr) => {
       outputsStatusMap.set(`${osr.txid}_${osr.index}`, osr.status);
     });
-    const finalResult = txsResult.map((tx) => ({
+
+    return txsResult.map((tx) => ({
       tx_hash: tx.txid,
       height:
         tx.inputs.filter(
@@ -276,8 +291,42 @@ export class TcpService implements OnModuleInit {
           : -1,
       fee: tx.fee,
     }));
+  }
 
-    return finalResult;
+  private async scriptHashGetStatus(
+    scripthash: string,
+  ): Promise<string | null> {
+    const history = await this.scriptHashGetHistoryItems(scripthash);
+    return computeScripthashStatus(history);
+  }
+
+  private async scriptHashGetHistory(
+    params: any[],
+  ): Promise<ElectrumXHistory[]> {
+    return this.scriptHashGetHistoryItems(params[0]);
+  }
+
+  private async scriptHashGetMempool(params: any[]) {
+    const txsIds: string[] = [];
+    let pgkey: string | undefined;
+    while (true) {
+      const result = await this.bitailsApiService.scripthashGetHistory(
+        params[0],
+        200,
+        pgkey,
+      );
+
+      const unconfirmedTxsIds = result.history
+        .filter((history) => history.blockheight <= 0)
+        .map((history) => history.txid);
+      txsIds.push(...unconfirmedTxsIds);
+      if (result.history.length > unconfirmedTxsIds.length || !result.pgKey) {
+        break;
+      }
+      pgkey = result.pgKey;
+    }
+
+    return this.resolveMempoolHeights(txsIds);
   }
 
   private async scriptHashGetBalance(params: any[]) {
